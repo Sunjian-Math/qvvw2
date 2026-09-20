@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite the associated article and archived software release when available."
+title: "Q-vvW2"
+type: software
+authors:
+  - family-names: Sun
+    given-names: Jian
+  - family-names: Wang
+    given-names: Wenshuai
+version: 1.0.0
+date-released: '2026-09-20'
+license: BSD-3-Clause
+keywords:
+  - inverse problems
+  - optimal transport
+  - Wasserstein geometry
+  - signed data
+  - quotient geometry

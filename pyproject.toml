@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qvvw2"
+version = "1.0.0"
+description = "Scale-invariant signed quadratic vector-valued Wasserstein quotient geometry for inverse problems"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-3-Clause"
+authors = [
+  {name = "Jian Sun"},
+  {name = "Wenshuai Wang"},
+]
+keywords = [
+  "inverse problems",
+  "optimal transport",
+  "Wasserstein geometry",
+  "signed data",
+  "quotient geometry",
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "pandas>=2.0",
+  "matplotlib>=3.7",
+  "scikit-learn>=1.4",
+  "torch>=2.1",
+]
+
+[project.optional-dependencies]
+notebooks = ["jupyterlab>=4", "ipykernel>=6"]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["qvvw2*", "experiments*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

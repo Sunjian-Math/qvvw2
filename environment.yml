@@ -1,0 +1,19 @@
+name: qvvw2
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13.5
+  - pip
+  - setuptools
+  - pip:
+      - --index-url https://download.pytorch.org/whl/cpu
+      - --extra-index-url https://pypi.org/simple
+      - numpy==2.3.5
+      - scipy==1.17.0
+      - pandas==2.2.3
+      - matplotlib==3.10.8
+      - scikit-learn==1.8.0
+      - torch==2.10.0+cpu
+      - jupyterlab==4.5.3
+      - ipykernel==7.2.0
+      - pytest==9.0.2
