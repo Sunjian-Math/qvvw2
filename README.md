@@ -2,6 +2,8 @@
 
 **Scale-Invariant Signed Quadratic Vector-Valued Wasserstein Quotient Geometry for Inverse Problems**
 
+**Authors:** Jian Sun and Wenshuai Wang
+
 ![Version](https://img.shields.io/badge/version-v1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.13.5-blue)
 ![License](https://img.shields.io/badge/license-BSD--3--Clause-green)
