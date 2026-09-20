@@ -119,9 +119,12 @@ qvvw2/
 
 ## Citation
 
-If you use Q-vvW2 in academic work, please cite the associated article once its final bibliographic record is available. Software citation metadata are provided in [`CITATION.cff`](CITATION.cff) and can be rendered by GitHub through **Cite this repository**.
+If you use Q-vvW2 in your research, please cite the archived software release:
 
-The archival DOI for the final v1.0.0 software release will be added after the release is deposited.
+Sun, J., & Wang, W. (2026). Q-vvW2 (Version 1.0.0) [Computer software]. Zenodo.
+https://doi.org/10.5281/zenodo.22853704
+
+Citation metadata are also available in `CITATION.cff`.
 
 ---
 
