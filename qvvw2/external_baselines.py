@@ -1,202 +1,110 @@
+"""Load the optional Marginal-W2sq baseline from its authors' fixed Git revision.
+
+No upstream modules are distributed with qvvw2. The first use downloads the
+required files to a user-side cache. Installing qvvw2 itself needs no network.
+"""
 from __future__ import annotations
 
-from pathlib import Path
+import io
 import os
-import shutil
-import time
-import urllib.request
+from pathlib import Path
+import tempfile
+from urllib.request import Request, urlopen
 import zipfile
 
-
-WAVEFORM_OT_COMMIT = (
-    "b4d0b87130a5fef0621f0966994e94db8b18e71a"
+WAVEFORM_OT_COMMIT = "b4d0b87130a5fef0621f0966994e94db8b18e71a"
+WAVEFORM_OT_SOURCE_URL = "https://github.com/msambridge/waveform-ot"
+WAVEFORM_OT_ARCHIVE_URL = (
+    WAVEFORM_OT_SOURCE_URL + "/archive/" + WAVEFORM_OT_COMMIT + ".zip"
 )
-
-WAVEFORM_OT_ARCHIVE = (
-    "https://codeload.github.com/msambridge/"
-    f"waveform-ot/zip/{WAVEFORM_OT_COMMIT}"
+REQUIRED_MODULES = (
+    "OTlib.py", "FingerprintLib.py", "ricker_util.py",
+    "ricker_util_opt.py", "myGP.py",
 )
-
-REVISION_MARKER = ".qvvw2_waveform_ot_revision"
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_MODULE_BYTES = 8 * 1024 * 1024
 
 
 def external_root() -> Path:
-    env = os.environ.get("QVVW2_EXTERNAL_DIR")
-
-    if env:
-        return Path(env).expanduser().resolve()
-
-    return (project_root() / "external").resolve()
-
-
-def _valid_reference(repo: Path) -> bool:
-    if not repo.exists():
-        return False
-
-    marker = repo / REVISION_MARKER
-
-    if not marker.exists():
-        return False
-
-    if marker.read_text(encoding="utf-8").strip() != WAVEFORM_OT_COMMIT:
-        return False
-
-    required = [
-        repo / "libs" / "OTlib.py",
-        repo / "libs" / "FingerprintLib.py",
-        repo / "libs" / "ricker_util.py",
-    ]
-
-    return all(p.exists() for p in required)
+    override = os.getenv("QVVW2_EXTERNAL_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    xdg = os.getenv("XDG_CACHE_HOME")
+    if xdg:
+        return (Path(xdg).expanduser() / "qvvw2" / "external").resolve()
+    if os.name == "nt" and os.getenv("LOCALAPPDATA"):
+        return (Path(os.environ["LOCALAPPDATA"]) / "qvvw2" / "external").resolve()
+    return (Path.home() / ".cache" / "qvvw2" / "external").resolve()
 
 
-def _download_reference(repo: Path, retries: int = 3) -> None:
-    root = repo.parent
-    root.mkdir(parents=True, exist_ok=True)
+def _ready(repo: Path) -> bool:
+    return all((repo / "libs" / name).is_file() for name in REQUIRED_MODULES)
 
-    archive = root / "waveform-ot.download.zip"
-    unpack = root / "waveform-ot.unpack"
 
-    last_error = None
+def _source_files(archive: bytes) -> dict[str, bytes]:
+    # Limit archive size and access only the explicitly named files: no arbitrary
+    # ZIP extraction or user-supplied executable paths.
+    if len(archive) > MAX_ARCHIVE_BYTES:
+        raise RuntimeError("waveform-ot download exceeds the size limit")
+    prefix = f"waveform-ot-{WAVEFORM_OT_COMMIT}/libs/"
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as z:
+            result = {}
+            for name in REQUIRED_MODULES:
+                member = z.getinfo(prefix + name)
+                if member.file_size > MAX_MODULE_BYTES:
+                    raise RuntimeError("waveform-ot module exceeds the size limit: " + name)
+                result[name] = z.read(member)
+            return result
+    except (zipfile.BadZipFile, KeyError, OSError, EOFError) as exc:
+        raise RuntimeError("Cannot read required modules from waveform-ot source archive") from exc
 
-    for attempt in range(1, retries + 1):
 
-        shutil.rmtree(unpack, ignore_errors=True)
-
-        if archive.exists():
-            archive.unlink()
-
-        try:
-            print(
-                f"[qvvw2] Downloading verified Marginal-W2sq "
-                f"reference snapshot ({attempt}/{retries})...",
-                flush=True,
-            )
-
-            request = urllib.request.Request(
-                WAVEFORM_OT_ARCHIVE,
-                headers={
-                    "User-Agent": "qvvw2-reproducibility"
-                },
-            )
-
-            with urllib.request.urlopen(
-                request,
-                timeout=120,
-            ) as response, open(archive, "wb") as output:
-
-                shutil.copyfileobj(
-                    response,
-                    output,
-                )
-
-            unpack.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
-            with zipfile.ZipFile(archive, "r") as zf:
-                zf.extractall(unpack)
-
-            folders = [
-                p for p in unpack.iterdir()
-                if p.is_dir()
-            ]
-
-            if len(folders) != 1:
-                raise RuntimeError(
-                    "Unexpected waveform-ot archive structure."
-                )
-
-            extracted = folders[0]
-
-            required = [
-                extracted / "libs" / "OTlib.py",
-                extracted / "libs" / "FingerprintLib.py",
-                extracted / "libs" / "ricker_util.py",
-            ]
-
-            if not all(p.exists() for p in required):
-                raise RuntimeError(
-                    "Required waveform-ot files are missing."
-                )
-
-            (
-                extracted / REVISION_MARKER
-            ).write_text(
-                WAVEFORM_OT_COMMIT + "\n",
-                encoding="utf-8",
-            )
-
-            if repo.exists():
-                shutil.rmtree(repo)
-
-            shutil.move(
-                str(extracted),
-                str(repo),
-            )
-
-            shutil.rmtree(
-                unpack,
-                ignore_errors=True,
-            )
-
-            if archive.exists():
-                archive.unlink()
-
-            print(
-                "[qvvw2] waveform-ot reference snapshot ready.",
-                flush=True,
-            )
-
-            return
-
-        except Exception as exc:
-            last_error = exc
-
-            shutil.rmtree(
-                unpack,
-                ignore_errors=True,
-            )
-
-            if archive.exists():
-                archive.unlink()
-
-            if attempt < retries:
-                print(
-                    "[qvvw2] Download interrupted; retrying...",
-                    flush=True,
-                )
-                time.sleep(2)
-
-    raise RuntimeError(
-        "Could not obtain the waveform-ot reference snapshot.\n"
-        "Check the network connection and rerun the notebook.\n"
-        "No experiment configuration has been modified.\n"
-        f"Original error: {last_error}"
-    )
+def _get_author_archive() -> bytes:
+    try:
+        request = Request(WAVEFORM_OT_ARCHIVE_URL, headers={"User-Agent": "qvvw2/1.1.4"})
+        with urlopen(request, timeout=45) as stream:
+            payload = stream.read(MAX_ARCHIVE_BYTES + 1)
+    except OSError as exc:
+        raise RuntimeError(
+            "Unable to download optional waveform-ot from its original repository. "
+            "Check your connection or follow the offline instructions in README: "
+            + WAVEFORM_OT_ARCHIVE_URL
+        ) from exc
+    if len(payload) > MAX_ARCHIVE_BYTES:
+        raise RuntimeError("waveform-ot download exceeds the size limit")
+    return payload
 
 
 def ensure_waveform_ot() -> Path:
-    repo = external_root() / "waveform-ot"
-
-    if _valid_reference(repo):
-        return repo
-
+    """Download once if needed, then reuse the source held in the user cache."""
+    root = external_root()
+    repo = root / ("waveform-ot-" + WAVEFORM_OT_COMMIT)
     if repo.exists():
-        shutil.rmtree(repo)
-
-    _download_reference(repo)
-
-    if not _valid_reference(repo):
-        raise RuntimeError(
-            "waveform-ot verification failed after download."
-        )
-
+        if not _ready(repo):
+            raise RuntimeError("waveform-ot cache is incomplete: " + str(repo))
+        return repo
+    if os.getenv("QVVW2_AUTO_FETCH", "1").lower() in ("0", "false", "no"):
+        raise RuntimeError("waveform-ot has not been downloaded and auto-fetch is disabled")
+    print("Downloading Sambridge et al. waveform-ot from the original repository ...", flush=True)
+    modules = _source_files(_get_author_archive())
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".waveform-ot-", dir=root) as tmpdir:
+        stage = Path(tmpdir) / "source"
+        libs = stage / "libs"
+        libs.mkdir(parents=True)
+        (libs / "__init__.py").write_text("")
+        for filename, content in modules.items():
+            (libs / filename).write_bytes(content)
+        if repo.exists():
+            if not _ready(repo):
+                raise RuntimeError("waveform-ot cache is incomplete: " + str(repo))
+        else:
+            try:
+                stage.rename(repo)
+            except OSError as exc:
+                if not _ready(repo):
+                    raise RuntimeError("Failed to install waveform-ot in the local cache") from exc
     return repo
 
 

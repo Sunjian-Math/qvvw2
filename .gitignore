@@ -1,0 +1,25 @@
+# Result and reference datasets are intentionally NOT shipped.
+/reference/
+/paper_figures/
+/paper_tables/
+/.qvvw2_generated/
+**/results/
+**/figures/
+**/budget_results/
+/final_validation/FINAL_PROTOCOL.json
+/final_validation/all_metrics.csv
+/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+
+/verification/
+*.log
+
+# Local waveform-OT cache (normally stored outside this repository)
+/waveform-ot*/
