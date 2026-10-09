@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import scipy.sparse.linalg as spla
 
+from .input_validation import signal_vector, acquisition_shape, graph_edges
+
 from .core import (
     lift, jt_eta, B_from_rho, two_layer_graph_edges,
     fixed_scale_lift, fixed_scale_jt_eta,
@@ -23,12 +25,13 @@ class QvvW2:
     _setup: dict | None = field(default=None, init=False, repr=False)
 
     def fit(self, observed, *, data_shape=None, edges=None):
-        d = np.asarray(observed, dtype=float)
+        d = signal_vector(observed, self.epsilon)
         flat = d.ravel()
         rho, _ = lift(flat, self.epsilon)
-        shape = tuple(data_shape or self.data_shape or d.shape or (flat.size,))
+        shape = acquisition_shape(tuple(data_shape or self.data_shape or d.shape or (flat.size,)), flat.size)
         if edges is None:
             edges = two_layer_graph_edges(shape, self.cross_weight, self.between_block_weight)
+        edges = graph_edges(edges, 2 * flat.size)
         B = B_from_rho(rho, edges)
         solver = spla.factorized(B[:-1, :-1].tocsc())
         self._setup = {
@@ -48,20 +51,24 @@ class QvvW2:
         return self._setup is not None
 
     def lifted(self, signal):
-        return lift(np.asarray(signal, dtype=float).ravel(), self.epsilon)[0]
+        epsilon = self.epsilon if self._setup is None else self._setup["epsilon"]
+        return lift(signal_vector(signal, epsilon).ravel(), epsilon)[0]
 
     def value_grad(self, predicted):
         if self._setup is None:
             raise RuntimeError("Call fit(observed) before value_grad(predicted).")
-        y = np.asarray(predicted, dtype=float)
-        rho, _ = lift(y.ravel(), self.epsilon)
+        epsilon = self._setup["epsilon"]
+        y = signal_vector(predicted, epsilon)
+        if y.size != int(np.prod(self._setup["observed_shape"])):
+            raise ValueError("Prediction size must match the fitted observation.")
+        rho, _ = lift(y.ravel(), epsilon)
         dr = rho - self._setup["rho_d"]
         b = dr - dr.mean()
         xr = self._setup["solver"](b[:-1])
         eta = np.r_[xr, 0.0]
         eta -= eta.mean()
         value = 0.5 * float(dr @ eta)
-        grad = jt_eta(y.ravel(), eta, self.epsilon).reshape(y.shape)
+        grad = jt_eta(y.ravel(), eta, epsilon).reshape(y.shape)
         return value, grad
 
     def value(self, predicted):
@@ -75,7 +82,7 @@ class QvvW2:
 
 @dataclass
 class FixedScaleVvW2:
-    """Non-quotient fixed-scale vvW2 ablation used in E04."""
+    """Non-quotient fixed-scale control; fitted parameters stay fixed until refit."""
     epsilon: float = 0.15
     cross_weight: float = 0.25
     between_block_weight: float = 0.2
@@ -83,13 +90,14 @@ class FixedScaleVvW2:
     _setup: dict | None = field(default=None, init=False, repr=False)
 
     def fit(self, observed, *, data_shape=None, edges=None):
-        d = np.asarray(observed, dtype=float)
+        d = signal_vector(observed, self.epsilon)
         flat = d.ravel()
         scale2 = float(np.mean(flat * flat))
         rho, _ = fixed_scale_lift(flat, scale2, self.epsilon)
-        shape = tuple(data_shape or self.data_shape or d.shape or (flat.size,))
+        shape = acquisition_shape(tuple(data_shape or self.data_shape or d.shape or (flat.size,)), flat.size)
         if edges is None:
             edges = two_layer_graph_edges(shape, self.cross_weight, self.between_block_weight)
+        edges = graph_edges(edges, 2 * flat.size)
         B = B_from_rho(rho, edges)
         solver = spla.factorized(B[:-1, :-1].tocsc())
         self._setup = {"rho_d":rho, "solver":solver, "reference_scale2":scale2,
@@ -99,14 +107,17 @@ class FixedScaleVvW2:
     def value_grad(self, predicted):
         if self._setup is None:
             raise RuntimeError("Call fit(observed) before value_grad(predicted).")
-        y = np.asarray(predicted, dtype=float)
-        rho, _ = fixed_scale_lift(y.ravel(), self._setup["reference_scale2"], self.epsilon)
+        epsilon = self._setup["epsilon"]
+        y = signal_vector(predicted, epsilon)
+        if y.size != int(np.prod(self._setup["observed_shape"])):
+            raise ValueError("Prediction size must match the fitted observation.")
+        rho, _ = fixed_scale_lift(y.ravel(), self._setup["reference_scale2"], epsilon)
         dr = rho - self._setup["rho_d"]
         b = dr - dr.mean()
         xr = self._setup["solver"](b[:-1])
         eta = np.r_[xr, 0.0]; eta -= eta.mean()
         value = 0.5 * float(dr @ eta)
-        grad = fixed_scale_jt_eta(y.ravel(), eta, self._setup["reference_scale2"], self.epsilon).reshape(y.shape)
+        grad = fixed_scale_jt_eta(y.ravel(), eta, self._setup["reference_scale2"], epsilon).reshape(y.shape)
         return value, grad
 
     def value(self, predicted): return self.value_grad(predicted)[0]

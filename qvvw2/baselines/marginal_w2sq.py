@@ -1,9 +1,9 @@
 import numpy as np
-
+from ..input_validation import finite_array, coordinate_axis
 
 class MarginalW2Squared:
-    name = "Marginal-W2sq"
-    display_name = "Marginal-W_2^2"
+    name = 'Marginal-W2sq'
+    display_name = 'Marginal-W_2^2'
 
     def __init__(self, time_axis=None, lambdav=0.03, theta=45.0, nugrid=36):
         self.time_axis = None if time_axis is None else np.asarray(time_axis, float)
@@ -19,77 +19,41 @@ class MarginalW2Squared:
         return self._ru
 
     def fit(self, observed, *, time_axis=None):
-        RU = self._reference()
-        self.observed = np.asarray(observed, float)
+        self.observed = finite_array(observed, name='observed', min_size=2)
+        if self.observed.ndim == 0 or self.observed.shape[-1] < 2:
+            raise ValueError('Marginal-W2sq requires traces with at least two samples.')
         if time_axis is not None:
-            self.time_axis = np.asarray(time_axis, float)
+            self.time_axis = time_axis
         if self.time_axis is None:
             self.time_axis = np.linspace(0, 1, self.observed.shape[-1])
-        amax = 1.5 * max(
-            abs(float(self.observed.min())),
-            abs(float(self.observed.max())),
-            1e-6,
-        )
-        self.grid = (
-            float(self.time_axis[0]),
-            float(self.time_axis[-1]),
-            -amax,
-            amax,
-            self.nugrid,
-            len(self.time_axis),
-        )
+        self.time_axis = coordinate_axis(self.time_axis, self.observed.shape[-1], name='time_axis')
+        RU = self._reference()
+        amax = 1.5 * max(abs(float(self.observed.min())), abs(float(self.observed.max())), 1e-06)
+        self.grid = (float(self.time_axis[0]), float(self.time_axis[-1]), -amax, amax, self.nugrid, len(self.time_axis))
         self.targets = []
         for tr in self.observed.reshape(-1, self.observed.shape[-1]):
-            _, obj = RU.BuildOTobjfromWaveform(
-                self.time_axis,
-                tr,
-                self.grid,
-                lambdav=self.lambdav,
-                theta=self.theta,
-            )
+            _, obj = RU.BuildOTobjfromWaveform(self.time_axis, tr, self.grid, lambdav=self.lambdav, theta=self.theta)
             self.targets.append(obj)
         return self
 
     def value_grad(self, predicted):
+        y = finite_array(predicted, name='predicted', min_size=2)
+        if y.shape != self.observed.shape:
+            raise ValueError('prediction shape must match the fitted observation.')
         RU = self._reference()
-        y = np.asarray(predicted, float)
         vals = []
         grads = []
         for i, tr in enumerate(y.reshape(-1, y.shape[-1])):
-            wf, obj = RU.BuildOTobjfromWaveform(
-                self.time_axis,
-                tr,
-                self.grid,
-                lambdav=self.lambdav,
-                deriv=True,
-                theta=self.theta,
-            )
+            wf, obj = RU.BuildOTobjfromWaveform(self.time_axis, tr, self.grid, lambdav=self.lambdav, deriv=True, theta=self.theta)
             try:
-                value, grad, _ = RU.CalcWasserWaveform(
-                    obj,
-                    self.targets[i],
-                    wf,
-                    distfunc="W2",
-                    deriv=True,
-                )
-                grad = np.nan_to_num(
-                    np.asarray(grad, float),
-                    nan=0.0,
-                    posinf=0.0,
-                    neginf=0.0,
-                )
-            except Exception:
-                value = RU.CalcWasserWaveform(
-                    obj,
-                    self.targets[i],
-                    wf,
-                    distfunc="W2",
-                    deriv=False,
-                )
+                value, grad, _ = RU.CalcWasserWaveform(obj, self.targets[i], wf, distfunc='W2', deriv=True)
+                grad = np.nan_to_num(np.asarray(grad, float), nan=0.0, posinf=0.0, neginf=0.0)
+            except RU.OT.TargetSourceCDFError:
+                value = RU.CalcWasserWaveform(obj, self.targets[i], wf, distfunc='W2', deriv=False)
                 grad = np.zeros_like(tr)
             vals.append(float(value))
             grads.append(grad)
-        return float(np.mean(vals)), (np.stack(grads) / len(vals)).reshape(y.shape)
+        return (float(np.mean(vals)), (np.stack(grads) / len(vals)).reshape(y.shape))
 
     def value(self, predicted):
         return self.value_grad(predicted)[0]

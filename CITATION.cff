@@ -1,22 +1,11 @@
 cff-version: 1.2.0
-message: "If you use this software in research, please cite the software release below."
-title: "Q-vvW2"
+message: "Please cite the accompanying Q-vvW2 manuscript when using this software."
+title: "Q-vvW2: Scale-Invariant Vector-Valued Wasserstein Quotient Geometry for Inverse Problems"
 type: software
-
+version: 1.1.4
+license: BSD-3-Clause
 authors:
   - family-names: Sun
     given-names: Jian
   - family-names: Wang
     given-names: Wenshuai
-
-version: 1.0.0
-date-released: '2026-09-20'
-doi: 10.5281/zenodo.22853704
-license: BSD-3-Clause
-
-keywords:
-  - inverse problems
-  - optimal transport
-  - Wasserstein geometry
-  - signed data
-  - quotient geometry
